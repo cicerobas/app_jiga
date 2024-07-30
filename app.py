@@ -3,14 +3,16 @@ from utils.constants import *
 from utils.result_file import *
 from utils.serial_ports import *
 from utils.arduino_controller import *
+from time import sleep
+
 
 class App(ft.Container):
-    def __init__(self, page: ft.Page, ports: list, arduino):
+    def __init__(self, page: ft.Page, ports: list):
         super().__init__()
         self.page = page
         self.page.window.prevent_close = True
         self.page.window.on_event = self.on_window_close
-        self.arduino = arduino
+        self.arduino = ArduinoController(self.update_pr)
         self.ports = ports
 
         self.file_picker = ft.FilePicker(on_result=self.on_path_result)
@@ -20,7 +22,6 @@ class App(ft.Container):
         self.selected_port = None
         if len(self.ports) > 0:
             self.selected_port = self.ports[0]
-        
 
         self.header = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -38,10 +39,7 @@ class App(ft.Container):
         self.name_tf = ft.TextField(
             width=300,
             label="Nome",
-            capitalization=ft.TextCapitalization.SENTENCES,
-            input_filter=ft.TextOnlyInputFilter(),  # TODO Corrrigir para aceitar espaços
-            prefix_icon=ft.icons.PEOPLE,
-            hint_text="Nome",
+            prefix_icon=ft.icons.ASSIGNMENT_IND,
         )
 
         self.serial_number_tf = ft.TextField(
@@ -51,7 +49,6 @@ class App(ft.Container):
             max_length=8,
             prefix_icon=ft.icons.NUMBERS,
             error_text="",
-            hint_text="Nº de Série",
         )
         self.run_test_btn = ft.ElevatedButton(
             disabled=True,
@@ -93,11 +90,13 @@ class App(ft.Container):
                     text="Cancelar",
                     on_click=lambda e: self.page.close(self.configs_dialog),
                 ),
-                ft.TextButton(text="Salvar", on_click=lambda _: self.save_default_path_config()),
+                ft.TextButton(
+                    text="Salvar", on_click=lambda _: self.save_default_path_config()
+                ),
             ],
         )
         self.snack_bar = ft.SnackBar(content=ft.Text(value="SELECIONE O TESTE"))
-
+        self.test_pr = ft.ProgressRing(value=0)
         # LAYOUT
         self.content = ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -106,16 +105,19 @@ class App(ft.Container):
                 self.name_tf,
                 self.serial_number_tf,
                 self.run_test_btn,
+                self.test_pr,
             ],
         )
 
     def did_mount(self):
         self.page.window.center()
         if self.selected_port is not None:
-            self.run_test_btn.disabled = not self.arduino.connect_arduino(self.selected_port)
+            self.run_test_btn.disabled = not self.arduino.connect_arduino(
+                self.selected_port
+            )
             self.run_test_btn.update()
         self.update_serial_number()
-        
+
     def run_test(self, e):
         if self.name_tf.value == "":
             self.name_tf.error_text = "Campo Obrigatório"
@@ -130,6 +132,10 @@ class App(ft.Container):
         self.serial_number_tf.update()
 
         if self.arduino.start_test_ok():
+            self.arduino.test_running = True
+            self.run_test_btn.disabled = self.arduino.test_running
+            self.run_test_btn.update()
+
             test_data = self.arduino.read_data()
             if len(test_data) > 19:
                 generate_test_file(
@@ -140,6 +146,10 @@ class App(ft.Container):
                 )
                 self.update_serial_number()
                 self.page.update()
+
+            self.run_test_btn.disabled = self.arduino.test_running
+            self.run_test_btn.update()
+
         else:
             self.page.snack_bar = self.snack_bar
             self.page.snack_bar.open = True
@@ -178,7 +188,12 @@ class App(ft.Container):
             self.port_options.content.controls.append(ft.Radio(value=port, label=port))
         self.port_options.update()
 
+    def update_pr(self, value):
+        self.test_pr.value = (5 * value) * 0.01
+        self.test_pr.update()
+
     def on_window_close(self, e):
         if e.data == "close":
+            self.arduino.test_running = False
             self.arduino.close_connection()
             self.page.window.destroy()
