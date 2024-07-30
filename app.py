@@ -8,14 +8,19 @@ class App(ft.Container):
     def __init__(self, page: ft.Page, ports: list, arduino):
         super().__init__()
         self.page = page
+        self.page.window.prevent_close = True
+        self.page.window.on_event = self.on_window_close
         self.arduino = arduino
         self.ports = ports
 
         self.file_picker = ft.FilePicker(on_result=self.on_path_result)
         self.page.overlay.append(self.file_picker)
 
-        self.selected_port = self.ports[0]
         self.selected_path = self.page.client_storage.get(PATH_KEY)
+        self.selected_port = None
+        if len(self.ports) > 0:
+            self.selected_port = self.ports[0]
+        
 
         self.header = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -88,7 +93,7 @@ class App(ft.Container):
                     text="Cancelar",
                     on_click=lambda e: self.page.close(self.configs_dialog),
                 ),
-                ft.TextButton(text="Salvar", on_click=lambda _: self.save_configs()),
+                ft.TextButton(text="Salvar", on_click=lambda _: self.save_default_path_config()),
             ],
         )
         self.snack_bar = ft.SnackBar(content=ft.Text(value="SELECIONE O TESTE"))
@@ -105,8 +110,10 @@ class App(ft.Container):
         )
 
     def did_mount(self):
-        self.run_test_btn.disabled = not self.arduino.check_arduino_connection()
-        self.run_test_btn.update()
+        self.page.window.center()
+        if self.selected_port is not None:
+            self.run_test_btn.disabled = not self.arduino.connect_arduino(self.selected_port)
+            self.run_test_btn.update()
         self.update_serial_number()
         
     def run_test(self, e):
@@ -121,12 +128,8 @@ class App(ft.Container):
         serial_number = self.serial_number_tf.value.zfill(8)
         self.serial_number_tf.value = serial_number
         self.serial_number_tf.update()
-        
-        if self.arduino is None:
-            self.arduino = ArduinoController(self.selected_port)
 
-        if self.arduino.start_test():
-            self.arduino.is_testing = True
+        if self.arduino.start_test_ok():
             test_data = self.arduino.read_data()
             if len(test_data) > 19:
                 generate_test_file(
@@ -136,7 +139,6 @@ class App(ft.Container):
                     test_data,
                 )
                 self.update_serial_number()
-                self.arduino.is_testing = False
                 self.page.update()
         else:
             self.page.snack_bar = self.snack_bar
@@ -156,13 +158,12 @@ class App(ft.Container):
             self.selected_path = e.path
 
     def set_port(self, e):
-        self.arduino.close()
         self.selected_port = e.control.value
-        self.arduino = ArduinoController(self.selected_port)
+        self.arduino.connect_arduino(port=self.selected_port)
+        self.port_options.update()
 
-    def save_configs(self):
+    def save_default_path_config(self):
         self.page.client_storage.set(PATH_KEY, self.selected_path)
-        self.page.client_storage.set(PORT_KEY, self.selected_port)
         self.page.close(self.configs_dialog)
 
     def open_config_dialog(self, e):
@@ -176,3 +177,8 @@ class App(ft.Container):
         for port in self.ports:
             self.port_options.content.controls.append(ft.Radio(value=port, label=port))
         self.port_options.update()
+
+    def on_window_close(self, e):
+        if e.data == "close":
+            self.arduino.close_connection()
+            self.page.window.destroy()

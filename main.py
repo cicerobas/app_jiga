@@ -13,6 +13,6 @@ def main(page: ft.Page):
     page.window.min_height=350
     page.window.min_width=350    
 
-    page.add(App(page=page, ports=get_ports(), arduino=ArduinoController(port=page.client_storage.get(PORT_KEY))))
+    page.add(App(page=page, ports=get_ports(), arduino=ArduinoController()))
 
 ft.app(main)

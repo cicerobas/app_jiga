@@ -3,22 +3,22 @@ import time
 
 
 class ArduinoController:
-    def __init__(self, port):
+    def __init__(self):
         self.arduino = None
-        self.port = port
-        self.is_testing = False
         
-    def check_arduino_connection(self) -> bool:
-        print("Conectando...")
-        time.sleep(1)
+    def connect_arduino(self, port=None) -> bool:
+        if self.arduino is not None:
+            self.arduino.close()
+            print('Connection closed')
         try:
-            self.arduino = serial.Serial(self.port, baudrate=9600, timeout=1)
-            print(f"Conectado em {self.port}")
+            self.arduino = serial.Serial(port, baudrate=9600, timeout=1)
+            print('Connection successful')
             return True
         except:
+            print('Connection error')
             return False
 
-    def start_test(self):
+    def start_test_ok(self):
         response = ""
         self.arduino.write(b"S")
         response = self.arduino.readline().decode().strip()
@@ -27,7 +27,7 @@ class ArduinoController:
 
     def read_data(self) -> list:
         test_data = []
-        while self.is_testing:
+        while True:
             self.arduino.timeout = None
             response_data = self.arduino.readline().decode().strip()
             if response_data == "Erro no teste - Reiniciar":
@@ -38,3 +38,9 @@ class ArduinoController:
             if len(test_data) > 19:
                 return test_data
         return []
+
+    def close_connection(self):
+        print("CLOSING...")
+        if self.arduino is not None:
+            self.arduino.close()
+            self.arduino = None
